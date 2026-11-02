@@ -1,0 +1,24 @@
+# Rust
+backend/target/
+**/*.rs.bk
+
+# Node
+node_modules
+frontend/dist/
+*.tsbuildinfo
+
+# Local runtime data
+data/
+*.db
+*.db-shm
+*.db-wal
+static/
+
+# Local config - the real database URL lives here or in the cluster's secret
+.env
+.env.local
+
+# Editors
+.DS_Store
+.idea/
+*.swp

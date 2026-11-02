@@ -1,0 +1,27 @@
+# CaiRezekiYojana has no sign-in: whoever can open this address can read, change
+# and delete the portfolio and the plans. Put authentication in front of it
+# before exposing it - for Traefik, a basic-auth or forward-auth Middleware
+# named in the annotation below - or keep it reachable from the LAN or a VPN only.
+kind: Ingress
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: cairezeki
+  namespace: invest
+  annotations:
+    cert-manager.io/cluster-issuer: YOUR-CLUSTER-ISSUER
+    # traefik.ingress.kubernetes.io/router.middlewares: invest-cairezeki-auth@kubernetescrd
+spec:
+  rules:
+    - host: "mydomain.example.com"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cairezeki
+                port:
+                  name: http
+  tls:
+    - hosts:
+        - "mydomain.example.com"

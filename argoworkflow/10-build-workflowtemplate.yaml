@@ -1,0 +1,163 @@
+# Builds the CaiRezekiYojana image with BuildKit (rootless, daemonless - no
+# privileged Docker-in-Docker) from GitHub, and pushes it to Docker Hub.
+#
+#   argo submit -n invest --from workflowtemplate/cairezeki-build --watch
+#   argo submit -n invest --from workflowtemplate/cairezeki-build \
+#     -p git-revision=some-branch --watch
+#   argo submit -n invest --from workflowtemplate/cairezeki-build \
+#     -p version-tag=2026.11.2 --watch
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: cairezeki-build
+  namespace: invest
+spec:
+  entrypoint: build
+  serviceAccountName: argo-workflow
+  arguments:
+    parameters:
+      # Set to the repository's address, or override with -p git-repo=...
+      - name: git-repo
+        value: https://github.com/YOUR-GITHUB-OWNER/CaiRezekiYojana.git
+      # A branch or a tag.
+      - name: git-revision
+        value: main
+      - name: image
+        value: docker.io/YOUR-DOCKERHUB-USER/cairezekiyojana
+      # Release tag pushed with every build, alongside the commit SHA and
+      # `latest`. Bump it here (or override with -p) for the next release.
+      - name: version-tag
+        value: "2026.11.2-1-beta"
+
+  volumeClaimTemplates:
+    - metadata:
+        name: work
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi
+
+  volumes:
+    - name: docker-config
+      secret:
+        secretName: cairezeki-dockerhub-creds
+        items:
+          - key: .dockerconfigjson
+            path: config.json
+
+  templates:
+    - name: build
+      dag:
+        tasks:
+          - name: clone
+            template: clone-source
+          - name: build-push
+            template: buildkit-build
+            dependencies: [clone]
+            arguments:
+              parameters:
+                - name: commit-sha
+                  value: "{{tasks.clone.outputs.parameters.commit-sha}}"
+
+    - name: clone-source
+      outputs:
+        parameters:
+          - name: commit-sha
+            valueFrom:
+              path: /work/commit-sha
+      container:
+        image: alpine/git:2.45.2
+        command: [sh, -c]
+        args:
+          - |
+            set -eu
+            DEST=/work/src
+            rm -rf "$DEST"
+            URL="$GIT_REPO"
+            # With a username and token in cairezeki-git-creds (a private
+            # repo), they go into the https URL; blank, the clone is anonymous.
+            if [ -n "${GIT_USERNAME:-}" ] && [ -n "${GIT_TOKEN:-}" ]; then
+              URL=$(echo "$GIT_REPO" | sed "s#https://#https://${GIT_USERNAME}:${GIT_TOKEN}@#")
+            fi
+            git clone --depth 1 --branch "$GIT_REVISION" "$URL" "$DEST"
+            git -C "$DEST" rev-parse --short HEAD > /work/commit-sha
+            rm -rf "$DEST/.git"
+        env:
+          - name: GIT_REPO
+            value: "{{workflow.parameters.git-repo}}"
+          - name: GIT_REVISION
+            value: "{{workflow.parameters.git-revision}}"
+          - name: GIT_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: cairezeki-git-creds
+                key: username
+                optional: true
+          - name: GIT_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: cairezeki-git-creds
+                key: token
+                optional: true
+        volumeMounts:
+          - name: work
+            mountPath: /work
+
+    - name: buildkit-build
+      inputs:
+        parameters:
+          - name: commit-sha
+      metadata:
+        annotations:
+          container.apparmor.security.beta.kubernetes.io/main: unconfined
+      container:
+        image: moby/buildkit:rootless
+        command: [buildctl-daemonless.sh]
+        args:
+          - build
+          - --frontend=dockerfile.v0
+          - --local
+          - context=/work/src
+          - --local
+          - dockerfile=/work/src
+          - --opt
+          - filename=Dockerfile
+          # Every tag goes in ONE quoted name= list. Repeating name= does not
+          # add tags - each replaces the last, so only the final one is pushed.
+          - --output
+          - 'type=image,"name={{workflow.parameters.image}}:{{inputs.parameters.commit-sha}},{{workflow.parameters.image}}:{{workflow.parameters.version-tag}},{{workflow.parameters.image}}:latest",push=true'
+          # Every stage's layers, including the Rust dependency compile, go to
+          # their own :cairezeki-compile tag. Inline cache would keep only the
+          # final runtime stage, so each build recompiled every crate. A failed
+          # cache push does not fail the build.
+          - --export-cache
+          - type=registry,ref={{workflow.parameters.image}}:cairezeki-compile,mode=max,ignore-error=true
+          - --import-cache
+          - type=registry,ref={{workflow.parameters.image}}:cairezeki-compile
+        env:
+          - name: DOCKER_CONFIG
+            value: /.docker
+          - name: BUILDKITD_FLAGS
+            value: --oci-worker-no-process-sandbox
+        volumeMounts:
+          - name: work
+            mountPath: /work
+          - name: docker-config
+            mountPath: /.docker
+            readOnly: true
+        securityContext:
+          seccompProfile:
+            type: Unconfined
+          runAsUser: 1000
+          runAsGroup: 1000
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          # Without a CPU cap cargo runs one rustc per host thread (16), which
+          # has taken the whole minipc down. cargo sizes its job count to the
+          # cgroup quota, so this also bounds peak memory.
+          limits:
+            cpu: "6"
+            memory: 4Gi

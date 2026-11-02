@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: invest
+
+# 01-secrets.yaml is deliberately not listed: it ships blank and holds the
+# database URL. Create it first (see the file), then apply this.
+resources:
+  - 10-config.yaml
+  - 30-deployment.yaml
+  - 40-ingress.yaml
+  - 60-refresh-cronjob.yaml

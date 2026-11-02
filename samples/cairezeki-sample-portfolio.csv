@@ -1,0 +1,9 @@
+Category,Account,Symbol,Exchange,Name,ISIN,AMFI Scheme Code,Quantity,Price,Amount,Currency,Country,Date,Institution,Deposit Kind,Interest Rate %,Maturity Date,Compounding,Payout,Notes
+ETF,Tiger SG,G3B,SGX,Amova Singapore STI ETF,,,1828,5.47,,SGD,SG,,,,,,,,SGX 15%: the larger part
+ETF,Tiger SG,SRT,SGX,CSOP iEdge S-REIT Leaders ETF,,,7375,0.678,,SGD,SG,,,,,,,,SGX 15%: the smaller part
+ETF,IBKR,SWRD,LSE,State Street SPDR MSCI World UCITS ETF,,,443,52.97,,USD,IE,,,,,,,,UCITS 50%: developed-market equity
+ETF,IBKR,WSML,LSE,iShares MSCI World Small Cap UCITS ETF,,,768,10.178,,USD,IE,,,,,,,,UCITS 50%: small caps
+ETF,IBKR,IGLN,LSE,iShares Physical Gold ETC,,,103,75.6375,,USD,IE,,,,,,,,UCITS 50%: gold
+MUTUAL_FUND,Groww,,,DSP Large Cap Fund - Direct Plan - Growth,INF740K01PR3,119250,1226,484.707,,INR,IN,,,,,,,,Indian funds 10%: 80% equity
+MUTUAL_FUND,Groww,,,DSP Money Market Fund - Direct Plan - Growth,INF740K01NU2,119106,2519,58.9799,,INR,IN,,,,,,,,Indian funds 10%: 20% debt
+CASH,DBS Multiplier,,,,,,,,25035.81,SGD,SG,,DBS Bank,,,,,,Cash 25%

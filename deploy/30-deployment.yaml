@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cairezeki
+  namespace: invest
+  labels:
+    app.kubernetes.io/name: cairezeki
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cairezeki
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cairezeki
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+        - name: cairezeki
+          # Built and pushed by argoworkflow/10-build-workflowtemplate.yaml.
+          # Prefer pinning to the commit-sha tag it also pushes over :latest
+          # for a given rollout, so `kubectl rollout restart` doesn't silently
+          # no-op (same tag => same digest => no new Pod spec).
+          image: docker.io/YOUR-DOCKERHUB-USER/cairezekiyojana:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: cairezeki-config
+            # CAIREZEKI_DATABASE_URL: the Supabase connection - see 01-secrets.yaml.
+            - secretRef:
+                name: cairezeki-secrets
+          volumeMounts:
+            # The root filesystem is read-only, so anything that wants a
+            # scratch directory needs one mounted.
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cairezeki
+  namespace: invest
+spec:
+  selector:
+    app.kubernetes.io/name: cairezeki
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

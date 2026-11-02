@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CaiRezekiYojana plan viewer</title>
+<!--
+  Shows a plan downloaded from RezekiYojana as JSON: today against the
+  plan by category (with every fund inside), by equity / debt, and the
+  moves. Self-contained: open it from the app at /plan-viewer.html, or save
+  it and open it from disk. Nothing is sent anywhere; the file is read in
+  the browser. The last plan shown is kept in this browser for a reload.
+  Opened from the planner, it shows the plan there straight away: the
+  planner leaves it in this browser's storage. Downloaded from the planner,
+  the plan rides inside the page as window.CAIREZEKI_PLAN.
+  Download HTML saves this page with the plan shown inside, the same way;
+  Download JSON saves the plan as the JSON it came as.
+  The JSON is the planner's download: it also carries the plan as a saved
+  session (`session`), which the planner uploads; the viewer shows the rest.
+  Opened from a shared link (?shared) it shows that plan only: no downloads,
+  no uploads.
+-->
+<style>
+.viz-root {
+  color-scheme: light;
+  --page: #f3ede1;
+  --surface-1: #fdfaf3;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --grid: rgba(60, 40, 10, 0.12);
+  --border: rgba(60, 40, 10, 0.12);
+  --good: #008300;
+  --bad: #e34948;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #4a3aa7;
+  --series-8: #e34948;
+  --series-rest: #b5b2a8;
+}
+@media (prefers-color-scheme: dark) {
+  .viz-root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface-1: #1a1a19;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: rgba(255, 255, 255, 0.1);
+    --border: rgba(255, 255, 255, 0.1);
+    --good: #3fb950;
+    --bad: #e66767;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #e66767;
+    --series-rest: #5c5b57;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+.viz-root {
+  min-height: 100vh;
+  background: var(--page);
+  color: var(--text-primary);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  padding: 24px;
+}
+h1 { font-size: 20px; margin: 0 0 4px; font-weight: 600; }
+.sub { color: var(--text-secondary); margin: 0; }
+.topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; max-width: 1100px; margin-bottom: 20px; }
+.topbar .actions { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.topbar .actions button {
+  font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; border-radius: 6px; padding: 6px 12px;
+  border: none; background: var(--series-1); color: #fff; white-space: nowrap;
+}
+.topbar .actions button:hover { opacity: .9; }
+.topbar .buttons { display: flex; gap: 8px; }
+.topbar .actions button.secondary { background: none; color: var(--series-1); box-shadow: inset 0 0 0 1px var(--series-1); }
+.topbar .err { margin-top: 0; font-size: 13px; }
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  max-width: 1100px;
+}
+.card h2 { font-size: 16px; margin: 0 0 2px; font-weight: 600; }
+.card .note { color: var(--text-secondary); margin: 0 0 16px; font-size: 13px; }
+.drop { border: 2px dashed var(--border); text-align: center; padding: 28px; }
+.drop.over { border-color: var(--series-1); }
+.drop button, .toolbar button {
+  font: inherit; font-size: 13px; cursor: pointer; border-radius: 6px; padding: 5px 12px;
+  border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary);
+}
+.toolbar { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+.toolbar button { border: none; color: var(--series-1); padding: 2px 0; font-size: 12px; background: none; }
+.err { color: var(--bad); margin-top: 10px; }
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 24px; }
+.panel h3 { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin: 0 0 8px; text-transform: uppercase; letter-spacing: .04em; }
+.panel-body { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+svg.donut { width: 220px; height: 220px; flex: none; overflow: visible; }
+svg.donut path.slice { stroke: var(--surface-1); stroke-width: 2; cursor: pointer; outline: none; transition: opacity .12s; }
+svg.donut:hover path.slice:not(:hover):not(:focus) { opacity: .55; }
+svg.donut .center-label { fill: var(--text-muted); font-size: 12px; text-anchor: middle; }
+svg.donut .center-value { fill: var(--text-primary); font-size: 18px; font-weight: 600; text-anchor: middle; }
+.legend { list-style: none; margin: 0; padding: 0; min-width: 200px; flex: 1; }
+.legend li { display: grid; grid-template-columns: 12px 1fr auto auto; gap: 8px; align-items: center; padding: 3px 0; }
+.legend .key { width: 12px; height: 12px; border-radius: 3px; }
+.legend .name { color: var(--text-secondary); }
+.legend .pct { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.legend .val { color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; min-width: 70px; }
+.scroll { overflow-x: auto; margin-top: 16px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--grid); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+th.l, td.l { text-align: left; white-space: normal; }
+th { color: var(--text-secondary); font-weight: 600; }
+tr.cat td { font-weight: 500; }
+tr.cat.changed td:first-child { box-shadow: inset 2px 0 var(--series-1); }
+tr.fund td { font-size: 12px; color: var(--text-secondary); }
+tr.fund td:first-child { padding-left: 34px; }
+tr.fund .detail { display: block; color: var(--text-muted); font-size: 11px; }
+tr.fund.aside td:first-child { font-style: italic; }
+tfoot td { font-weight: 600; border-bottom: none; }
+.toggle { cursor: pointer; border: none; background: none; color: var(--text-muted); width: 18px; padding: 0; font: inherit; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.up { color: var(--good); }
+.down { color: var(--bad); }
+.badge { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: rgba(127,127,127,.14); color: var(--text-secondary); }
+.tooltip {
+  position: fixed; pointer-events: none; z-index: 10;
+  background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.12);
+  padding: 8px 10px; font-size: 13px; min-width: 160px;
+  opacity: 0; transition: opacity .08s;
+}
+.tooltip .tt-head { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); }
+.tooltip .tt-key { width: 12px; height: 2px; border-radius: 1px; }
+.tooltip .tt-val { font-size: 16px; font-weight: 600; margin-top: 2px; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="viz-root">
+  <header class="topbar">
+    <div>
+      <h1 id="title">CaiRezekiYojana plan viewer</h1>
+      <p class="sub" id="subtitle">Load a plan downloaded from RezekiYojana as JSON.</p>
+    </div>
+    <div class="actions">
+      <div class="buttons">
+        <button type="button" id="save-json" class="secondary" title="Download the plan as JSON: it opens here again, and uploads into the planner as a saved session" hidden>Download JSON</button>
+        <button type="button" id="save-html" class="secondary" title="Download this viewer, with the plan inside, as an HTML file to open from disk" hidden>Download HTML</button>
+        <button type="button" id="pick" title="Show a plan downloaded from RezekiYojana as JSON">Upload plan…</button>
+      </div>
+      <input type="file" id="file" accept=".json,application/json" hidden>
+      <div class="err" id="err" role="alert"></div>
+    </div>
+  </header>
+
+  <section class="card drop" id="drop">
+    <p>No plan to show yet. Drop the plan's JSON file here, or use Upload plan at the top.</p>
+  </section>
+
+  <div id="report" hidden>
+    <section class="card">
+      <h2>Allocation by category</h2>
+      <p class="note" id="cat-note"></p>
+      <div class="pair" id="cat-charts"></div>
+      <div class="scroll">
+        <div class="toolbar"><button type="button" id="expand-all">Show all funds</button></div>
+        <table id="cat-table"></table>
+      </div>
+    </section>
+
+    <section class="card" id="class-card">
+      <h2>Equity vs debt</h2>
+      <p class="note">Each category's classification, with the moves shifting money between classes.</p>
+      <div class="pair" id="class-charts"></div>
+      <div class="scroll"><table id="class-table"></table></div>
+    </section>
+
+    <section class="card" id="moves-card">
+      <h2>Moves</h2>
+      <p class="note">Every decision in the plan, in the order made.</p>
+      <div class="scroll"><table id="moves-table"></table></div>
+    </section>
+  </div>
+</div>
+
+<div class="tooltip" id="tt" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+// Opened from a shared link (`?shared`): someone else's plan, to look at only - nothing to
+// download or upload, and no right-click or selecting text. That only puts people off copying;
+// what protects the owner is that the server sends nothing but the shared plans.
+const SHARED = new URLSearchParams(location.search).has("shared");
+const STORE = SHARED ? "cairezeki-plan-viewer-shared" : "cairezeki-plan-viewer";
+const MAX_SLICES = 8;
+const NS = "http://www.w3.org/2000/svg";
+const $ = (id) => document.getElementById(id);
+const tt = $("tt");
+let doc = null;
+// The page as it came, before a plan is drawn into it: what Download HTML
+// saves, with the plan shown put inside.
+const PRISTINE = document.documentElement.cloneNode(true);
+
+// ---------------------------------------------------------------- loading
+
+function load(text, remember) {
+  let d;
+  try { d = JSON.parse(text); } catch (e) { return fail("That file is not JSON."); }
+  if (d && d.format === "cairezeki-plan-session")
+    return fail("That is a saved session from the API, without what the viewer shows: upload it in the planner, open it, and download the JSON there.");
+  if (!d || d.format !== "cairezeki-plan" || !Array.isArray(d.categories))
+    return fail("That is not a plan downloaded from RezekiYojana.");
+  $("err").textContent = "";
+  if (remember) try { localStorage.setItem(STORE, text); } catch (e) { /* too big to keep: fine */ }
+  doc = d;
+  render();
+}
+function fail(msg) { $("err").textContent = msg; }
+
+const pad = (n) => String(n).padStart(2, "0");
+const stamp = (d) =>
+  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+
+// A download's name, without its extension: the session's name and when it was
+// saved, if the plan carries one; else the viewer and now.
+function fileName() {
+  const ses = doc.session;
+  return ses
+    ? `${(ses.name || "plan-session").trim().replace(/[^\p{L}\p{N}_-]/gu, "_")}_${stamp(new Date(ses.created_at))}`
+    : `cairezeki-plan-viewer-${stamp(new Date())}`;
+}
+
+// This page, with the plan shown inside as window.CAIREZEKI_PLAN, to open from disk.
+function saveHtml() {
+  if (!doc) return;
+  const root = PRISTINE.cloneNode(true);
+  for (const s of root.querySelectorAll("script")) if (s.textContent.trim().startsWith("window.CAIREZEKI_PLAN")) s.remove();
+  const s = document.createElement("script");
+  s.id = "cairezeki-plan";
+  // `<` escaped, so no label can close the script early.
+  s.textContent = "window.CAIREZEKI_PLAN = " + JSON.stringify(doc).replace(/</g, "\\u003c") + ";";
+  root.querySelector("head").appendChild(s);
+  const name = fileName();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["<!doctype html>\n" + root.outerHTML], { type: "text/html" }));
+  a.download = name + ".html";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+$("save-html").onclick = saveHtml;
+
+// The plan shown, as the JSON it came as: it opens here again and uploads into the planner.
+function saveJson() {
+  if (!doc) return;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" }));
+  a.download = fileName() + ".json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+$("save-json").onclick = saveJson;
+function readFile(f) { if (f && !SHARED) f.text().then((t) => load(t, true)); }
+
+$("pick").onclick = () => $("file").click();
+$("file").onchange = (e) => { readFile(e.target.files[0]); e.target.value = ""; };
+for (const t of ["dragenter", "dragover"]) document.addEventListener(t, (e) => { e.preventDefault(); $("drop").classList.add("over"); });
+document.addEventListener("dragleave", (e) => { if (!e.relatedTarget) $("drop").classList.remove("over"); });
+document.addEventListener("drop", (e) => { e.preventDefault(); $("drop").classList.remove("over"); readFile(e.dataTransfer.files[0]); });
+
+// ------------------------------------------------------------- formatting
+
+function money(v) {
+  const c = doc.currency;
+  const sign = v < 0 ? "−" : "";
+  const a = Math.abs(v);
+  if (c === "INR") {
+    if (a >= 1e7) return sign + "₹" + (a / 1e7).toFixed(2) + " Cr";
+    if (a >= 1e5) return sign + "₹" + (a / 1e5).toFixed(1) + " L";
+    return sign + "₹" + Math.round(a).toLocaleString("en-IN");
+  }
+  try {
+    return sign + new Intl.NumberFormat(undefined, { style: "currency", currency: c, maximumFractionDigits: 0 }).format(a);
+  } catch (e) {
+    return sign + c + " " + Math.round(a).toLocaleString();
+  }
+}
+const signed = (v) => (Math.abs(v) < 0.5 ? "—" : (v > 0 ? "+" : "") + money(v));
+const pct = (v) => v.toFixed(1) + "%";
+const share = (v, t) => (t ? (v / t) * 100 : 0);
+const deltaCls = (v) => (Math.abs(v) < 0.5 ? "" : v > 0 ? "up" : "down");
+function shift(pp) {
+  if (Math.abs(pp) < 0.05) return { text: "—", cls: "" };
+  return { text: (pp > 0 ? "+" : "−") + Math.abs(pp).toFixed(1) + " pp", cls: pp > 0 ? "up" : "down" };
+}
+
+function html(tag, cls, text, parent) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  if (parent) parent.appendChild(n);
+  return n;
+}
+function el(tag, attrs, parent) {
+  const n = document.createElementNS(NS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+
+// ----------------------------------------------------------------- donuts
+
+function arcPath(cx, cy, r0, r1, a0, a1) {
+  if (a1 - a0 >= Math.PI * 2 - 1e-6) a1 = a0 + Math.PI * 2 - 1e-4; // a full ring still draws
+  if (a1 - a0 < 0.012) a1 = a0 + 0.012; // a tiny slice still shows
+  const large = a1 - a0 > Math.PI ? 1 : 0;
+  const p = (r, a) => [cx + r * Math.sin(a), cy - r * Math.cos(a)];
+  const [x0, y0] = p(r1, a0), [x1, y1] = p(r1, a1), [x2, y2] = p(r0, a1), [x3, y3] = p(r0, a0);
+  return `M${x0},${y0} A${r1},${r1} 0 ${large} 1 ${x1},${y1} L${x2},${y2} A${r0},${r0} 0 ${large} 0 ${x3},${y3} Z`;
+}
+
+function showTip(evt, s, v, total, title) {
+  tt.replaceChildren();
+  const head = html("div", "tt-head", null, tt);
+  html("span", "tt-key", null, head).style.background = s.color;
+  html("span", null, `${s.label} · ${title}`, head);
+  html("div", "tt-val", `${pct(share(v, total))}  ·  ${money(v)}`, tt);
+  let x, y;
+  if (evt.type !== "focus") { x = evt.clientX; y = evt.clientY; }
+  else { const r = evt.target.getBoundingClientRect(); x = r.left + r.width / 2; y = r.top; }
+  tt.style.left = Math.min(x + 14, window.innerWidth - 200) + "px";
+  tt.style.top = y + 14 + "px";
+  tt.style.opacity = 1;
+}
+const hideTip = () => { tt.style.opacity = 0; };
+
+/** One donut and its legend. `series` is [{label, color}], `values` the same length. */
+function donut(container, title, center, series, values) {
+  const total = values.reduce((a, v) => a + Math.max(0, v), 0);
+  const wrap = html("div", "panel", null, container);
+  html("h3", null, title, wrap);
+  const body = html("div", "panel-body", null, wrap);
+  const svg = el("svg", {
+    class: "donut", viewBox: "0 0 220 220", role: "img",
+    "aria-label": `${title}: ` + series.map((s, i) => `${s.label} ${pct(share(values[i], total))}`).join(", "),
+  }, body);
+  let a = 0;
+  series.forEach((s, i) => {
+    const v = Math.max(0, values[i]);
+    if (!v || !total) return;
+    const a1 = a + (v / total) * Math.PI * 2;
+    const path = el("path", { class: "slice", d: arcPath(110, 110, 62, 104, a, a1), fill: s.color, tabindex: 0,
+      "aria-label": `${s.label}: ${pct(share(v, total))}, ${money(v)}` }, svg);
+    path.addEventListener("pointermove", (e) => showTip(e, s, v, total, title));
+    path.addEventListener("pointerleave", hideTip);
+    path.addEventListener("focus", (e) => showTip(e, s, v, total, title));
+    path.addEventListener("blur", hideTip);
+    a = a1;
+  });
+  el("text", { class: "center-label", x: 110, y: 104 }, svg).textContent = center;
+  el("text", { class: "center-value", x: 110, y: 126 }, svg).textContent = money(total);
+
+  const ul = html("ul", "legend", null, body);
+  series.forEach((s, i) => {
+    if (Math.abs(values[i]) < 0.5) return;
+    const li = html("li", null, null, ul);
+    html("span", "key", null, li).style.background = s.color;
+    html("span", "name", s.label, li);
+    html("span", "pct", pct(share(values[i], total)), li);
+    html("span", "val", money(values[i]), li);
+  });
+}
+
+/**
+ * Colours by category, the same in both donuts. The biggest categories get
+ * a colour each; past the palette, the rest share one slice.
+ */
+function categorySlices(cats) {
+  const ranked = [...cats].sort((a, b) => Math.max(b.today, b.planned) - Math.max(a.today, a.planned));
+  const own = new Set(ranked.slice(0, cats.length > MAX_SLICES ? MAX_SLICES - 1 : MAX_SLICES).map((c) => c.key));
+  const colour = {};
+  let i = 0;
+  for (const c of cats) if (own.has(c.key)) colour[c.key] = `var(--series-${++i})`;
+  const series = cats.filter((c) => own.has(c.key)).map((c) => ({ label: c.label, color: colour[c.key] }));
+  const rest = cats.filter((c) => !own.has(c.key));
+  const pick = (f) => [...cats.filter((c) => own.has(c.key)).map(f), ...(rest.length ? [rest.reduce((t, c) => t + f(c), 0)] : [])];
+  if (rest.length) series.push({ label: `${rest.length} more`, color: "var(--series-rest)" });
+  for (const c of rest) colour[c.key] = "var(--series-rest)";
+  return { series, today: pick((c) => c.today), planned: pick((c) => c.planned), colour };
+}
+
+// ----------------------------------------------------------------- tables
+
+function headRow(table, cols) {
+  const tr = html("tr", null, null, html("thead", null, null, table));
+  cols.forEach(([label, left]) => html("th", left ? "l" : null, label, tr));
+}
+function cell(tr, text, cls) { return html("td", cls || null, text, tr); }
+
+function renderCategories() {
+  const t = $("cat-table");
+  t.replaceChildren();
+  const totals = doc.totals;
+  const { colour } = categorySlices(doc.categories);
+  headRow(t, [["Category", true], ["Class", true], ["Status", true], ["Today"], ["Today %"], ["Change (+ / −)"], ["Planned"], ["Planned %"], ["Shift"]]);
+  const tb = html("tbody", null, null, t);
+  const toggles = [];
+  for (const c of doc.categories) {
+    const tr = html("tr", "cat" + (c.status !== "Unchanged" ? " changed" : ""), null, tb);
+    const first = cell(tr, null, "l");
+    const funds = c.subcategories || [];
+    const btn = html("button", "toggle", funds.length ? "▸" : "", first);
+    btn.type = "button";
+    btn.setAttribute("aria-expanded", "false");
+    btn.setAttribute("aria-label", `Show the funds in ${c.label}`);
+    html("span", "swatch", null, first).style.background = colour[c.key];
+    first.append(c.label);
+    cell(tr, c.classification, "l");
+    html("span", "badge", c.status, cell(tr, null, "l"));
+    cell(tr, money(c.today));
+    cell(tr, pct(c.today_pct));
+    cell(tr, signed(c.change), deltaCls(c.change));
+    cell(tr, money(c.planned));
+    cell(tr, pct(c.planned_pct));
+    const s = shift(c.planned_pct - c.today_pct);
+    cell(tr, s.text, s.cls);
+
+    const rows = funds.map((f) => {
+      const fr = html("tr", "fund" + (f.kind !== "fund" ? " aside" : ""), null, tb);
+      fr.hidden = true;
+      const name = cell(fr, f.label, "l");
+      if (f.detail) html("span", "detail", f.detail, name);
+      cell(fr, f.classification, "l");
+      cell(fr, null, "l").append(...(f.status !== "Unchanged" ? [html("span", "badge", f.status)] : []));
+      cell(fr, f.today ? money(f.today) : "—");
+      cell(fr, f.today ? pct(f.today_pct) : "—");
+      cell(fr, signed(f.change), deltaCls(f.change));
+      cell(fr, money(f.planned));
+      cell(fr, pct(f.planned_pct));
+      const fs = shift(f.planned_pct - f.today_pct);
+      cell(fr, fs.text, fs.cls);
+      return fr;
+    });
+    const set = (open) => {
+      if (!funds.length) return;
+      rows.forEach((r) => { r.hidden = !open; });
+      btn.textContent = open ? "▾" : "▸";
+      btn.setAttribute("aria-expanded", String(open));
+    };
+    btn.onclick = () => set(btn.getAttribute("aria-expanded") !== "true");
+    toggles.push(set);
+  }
+  const ft = html("tr", null, null, html("tfoot", null, null, t));
+  cell(ft, "Total", "l"); cell(ft, ""); cell(ft, "");
+  cell(ft, money(totals.today)); cell(ft, "100%");
+  cell(ft, signed(totals.change), deltaCls(totals.change));
+  cell(ft, money(totals.planned)); cell(ft, "100%"); cell(ft, "");
+
+  let all = false;
+  $("expand-all").textContent = "Show all funds";
+  $("expand-all").onclick = () => {
+    all = !all;
+    toggles.forEach((f) => f(all));
+    $("expand-all").textContent = all ? "Hide funds" : "Show all funds";
+  };
+}
+
+/** Classes summed into their groups: Equity, Debt – High Yield, and so on. */
+function groups() {
+  const out = [];
+  for (const c of doc.by_class || []) {
+    const g = out.find((x) => x.label === c.group) || out[out.push({ label: c.group, today: 0, planned: 0, classes: [] }) - 1];
+    g.today += c.today;
+    g.planned += c.planned;
+    g.classes.push(c);
+  }
+  return out;
+}
+
+function renderClasses() {
+  const gs = groups();
+  $("class-card").hidden = !gs.length;
+  if (!gs.length) return;
+  const series = gs.map((g, i) => ({ label: g.label, color: `var(--series-${(i % 8) + 1})` }));
+  const box = $("class-charts");
+  box.replaceChildren();
+  donut(box, "Today", "Total", series, gs.map((g) => g.today));
+  donut(box, "Planned", "Total", series, gs.map((g) => g.planned));
+
+  const t = $("class-table");
+  t.replaceChildren();
+  headRow(t, [["Class", true], ["Today"], ["Today %"], ["Change (+ / −)"], ["Planned"], ["Planned %"], ["Shift"]]);
+  const tb = html("tbody", null, null, t);
+  const tToday = gs.reduce((a, g) => a + g.today, 0);
+  const tPlanned = gs.reduce((a, g) => a + g.planned, 0);
+  const line = (label, today, planned, cls, colour) => {
+    const tr = html("tr", cls, null, tb);
+    const first = cell(tr, null, "l");
+    if (colour) html("span", "swatch", null, first).style.background = colour;
+    first.append(label);
+    cell(tr, money(today)); cell(tr, pct(share(today, tToday)));
+    cell(tr, signed(planned - today), deltaCls(planned - today));
+    cell(tr, money(planned)); cell(tr, pct(share(planned, tPlanned)));
+    const s = shift(share(planned, tPlanned) - share(today, tToday));
+    cell(tr, s.text, s.cls);
+  };
+  gs.forEach((g, i) => {
+    line(g.label, g.today, g.planned, "cat", series[i].color);
+    // A group of several classes (Equity: funds and stocks) shows each beneath.
+    if (g.classes.length > 1) for (const c of g.classes) line(c.label, c.today, c.planned, "fund");
+  });
+}
+
+function renderMoves() {
+  const moves = doc.moves || [];
+  $("moves-card").hidden = !moves.length;
+  const t = $("moves-table");
+  t.replaceChildren();
+  headRow(t, [["From", true], ["To", true], ["Amount"], ["Note", true], ["Planned on"]]);
+  const tb = html("tbody", null, null, t);
+  for (const m of moves) {
+    const tr = html("tr", null, null, tb);
+    cell(tr, m.from, "l"); cell(tr, m.to, "l"); cell(tr, money(m.amount)); cell(tr, m.note || "", "l"); cell(tr, m.planned_on);
+  }
+  const ft = html("tr", null, null, html("tfoot", null, null, t));
+  cell(ft, "Total", "l"); cell(ft, ""); cell(ft, money(moves.reduce((a, m) => a + m.amount, 0))); cell(ft, ""); cell(ft, "");
+}
+
+function render() {
+  const d = doc;
+  const asOf = new Date(d.as_of).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  $("title").textContent = `CaiRezekiYojana plan: today vs planned`;
+  $("subtitle").textContent =
+    `${d.view === "classes" ? "By equity / debt" : "By segment"} · values as of ${asOf}, in ${d.currency}` +
+    (d.currency !== d.base_currency ? ` (base ${d.base_currency})` : "") +
+    ` · today ${money(d.totals.today)}, planned ${money(d.totals.planned)}` +
+    (d.fresh_money ? ` · fresh money ${money(d.fresh_money)}` : "") +
+    (d.session ? ` · session “${d.session.name}”, saved ${new Date(d.session.created_at).toLocaleString()}` : "") +
+    ` · downloaded ${new Date(d.generated_at).toLocaleString()}`;
+  $("cat-note").textContent =
+    "Each category today and in the plan. Open a category for the funds, stocks, deposits and accounts in it; " +
+    "their shares are of the whole portfolio.";
+
+  const sl = categorySlices(d.categories);
+  const box = $("cat-charts");
+  box.replaceChildren();
+  donut(box, "Today", "Total", sl.series, sl.today);
+  donut(box, "Planned", "Total", sl.series, sl.planned);
+  renderCategories();
+  renderClasses();
+  renderMoves();
+  $("drop").hidden = true;
+  $("report").hidden = false;
+  // Downloads only where the user allows them: a saved session may be kept from them.
+  $("save-html").hidden = $("save-json").hidden = SHARED || d.downloads === false;
+}
+
+if (SHARED) {
+  $("pick").hidden = true;
+  $("drop").querySelector("p").textContent = "No shared plan to show: open it from the shared page again.";
+  document.documentElement.style.userSelect = "none";
+  for (const t of ["contextmenu", "copy", "selectstart"]) document.addEventListener(t, (e) => e.preventDefault());
+}
+// A viewer downloaded from the planner carries its plan; otherwise show the
+// last plan kept here - the planner leaves its plan here when it opens this.
+if (window.CAIREZEKI_PLAN) load(JSON.stringify(window.CAIREZEKI_PLAN), false);
+else try { const kept = localStorage.getItem(STORE); if (kept) load(kept, false); } catch (e) { /* none kept */ }
+// The planner opening the viewer again, with this tab still open.
+window.addEventListener("storage", (e) => { if (e.key === STORE && e.newValue) load(e.newValue, false); });
+</script>
+</body>
+</html>

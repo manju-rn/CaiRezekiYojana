@@ -1,0 +1,217 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Colour tokens.
+ *
+ * These are the validated reference palette from the data-viz method, used
+ * unchanged and in its documented slot order - the ordering is the
+ * colour-blind-safety mechanism, not decoration, so do not reshuffle it.
+ * Dark is a selected set of steps for the dark surface, not an auto-inversion.
+ */
+:root {
+  color-scheme: light;
+
+  /* Warm white, near a 5000K lamp rather than daylight: the plane a shade
+     deeper than the cards so they stand off it. */
+  --surface-1: #fdfaf3;
+  --page-plane: #f3ede1;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --gridline: #e5dece;
+  --baseline: #c8bfad;
+  --hairline: rgba(60, 40, 10, 0.12);
+
+  /* The raised edge of a section: a rim, lit from above and shadowed below. */
+  --edge: rgba(70, 50, 20, 0.2);
+  --edge-low: rgba(70, 50, 20, 0.3);
+  --edge-light: rgba(255, 255, 255, 0.9);
+  --edge-shadow: 0 1px 2px rgba(70, 45, 10, 0.1), 0 3px 8px rgba(70, 45, 10, 0.08);
+
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #4a3aa7;
+  --series-8: #e34948;
+
+  /* Two steps each of the equity (blue) and debt (aqua) hues, for a ring
+     whose slices are grouped under a band of the parent colour. Validated
+     as a set in ring order - equity dark, light, debt dark, light, then
+     series-4 for "other" - with the ring's wrap-around pair included. The
+     class ring now gives series-4 to gold and series-5 to "other". */
+  --group-equity-1: #0b4da8;
+  --group-equity-2: #5897f9;
+  --group-debt-1: #077952;
+  --group-debt-2: #1bcc8e;
+
+  /* Sequential blue ramp, for magnitude encoding. */
+  --seq-250: #86b6ef;
+  --seq-350: #5598e7;
+  --seq-450: #2170c9;
+  --seq-550: #1c5cab;
+  --seq-650: #104281;
+  /* The tail of a ranked stack: everything past the named holdings. A
+     neutral, so it reads as "not one of these" rather than as a step. */
+  --seq-other: #c3c2b7;
+  --seq-other-ink: #0b0b0b;
+
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+  --delta-up: #006300;
+
+  /* Text on each heat-map step, by that step's luminance on this surface. */
+  --heat-ink-1: #0b0b0b;
+  --heat-ink-2: #0b0b0b;
+  --heat-ink-3: #ffffff;
+  --heat-ink-4: #ffffff;
+  --heat-ink-5: #ffffff;
+}
+
+/* Dark is the default; light applies only when the viewer switches to it.
+   The toggle sets data-theme on <html> before first paint. */
+:root:not([data-theme='light']) {
+  color-scheme: dark;
+
+  --surface-1: #1a1a19;
+  --page-plane: #0d0d0d;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #898781;
+  --gridline: #2c2c2a;
+  --baseline: #383835;
+  --hairline: rgba(255, 255, 255, 0.1);
+
+  --edge: rgba(255, 255, 255, 0.14);
+  --edge-low: rgba(0, 0, 0, 0.7);
+  --edge-light: rgba(255, 255, 255, 0.07);
+  --edge-shadow: 0 1px 2px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.45);
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+
+  --group-equity-1: #1e5cb9;
+  --group-equity-2: #4f8def;
+  --group-debt-1: #077952;
+  --group-debt-2: #18ac77;
+
+  --seq-250: #184f95;
+  --seq-350: #256abf;
+  --seq-450: #3987e5;
+  --seq-550: #6aa6ec;
+  --seq-650: #9ec7f3;
+  --seq-other: #45443f;
+  --seq-other-ink: #ffffff;
+
+  --delta-up: #0ca30c;
+
+  --heat-ink-1: #ffffff;
+  --heat-ink-2: #ffffff;
+  --heat-ink-3: #0b0b0b;
+  --heat-ink-4: #0b0b0b;
+  --heat-ink-5: #0b0b0b;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--page-plane);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Columns of figures must line up; standalone numbers should not be forced
+   into monospaced widths. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A section stands up off the page: a definite rim, a lit top edge and a
+   soft shadow beneath, the same in both themes. */
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--edge);
+  border-bottom-color: var(--edge-low);
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 var(--edge-light), var(--edge-shadow);
+}
+
+.banner {
+  border-bottom: 1px solid var(--edge-low);
+  box-shadow: inset 0 -1px 0 var(--edge-light), var(--edge-shadow);
+}
+
+.hairline {
+  border-color: var(--hairline);
+}
+
+/* Keyboard focus must stay visible - the tables are navigable. */
+:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
+}
+
+/* Heat-map tiles. The fill is a step of the sequential ramp and the text
+   takes white or ink by that step's luminance on the current surface: the
+   one place in the app where text sits on a data colour. On the dark
+   surface the ramp runs dark-to-light, so the ink flips with it. */
+.heat-1 {
+  background: var(--seq-250);
+  color: var(--heat-ink-1);
+}
+.heat-2 {
+  background: var(--seq-350);
+  color: var(--heat-ink-2);
+}
+.heat-3 {
+  background: var(--seq-450);
+  color: var(--heat-ink-3);
+}
+.heat-4 {
+  background: var(--seq-550);
+  color: var(--heat-ink-4);
+}
+.heat-5 {
+  background: var(--seq-650);
+  color: var(--heat-ink-5);
+}
+
+/* The tail of a ranked stack. Neutral rather than a sixth step, so the
+   reader sees where the named holdings stop. */
+.heat-other {
+  background: var(--seq-other);
+  color: var(--seq-other-ink);
+}
+
+/* A setting refused: the box shakes (see lib/textSize). Still where motion is reduced: red is enough. */
+@keyframes nv-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-5px); }
+  40%, 80% { transform: translateX(5px); }
+}
+.shake {
+  animation: nv-shake 0.4s ease-in-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shake {
+    animation: none;
+  }
+}

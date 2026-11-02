@@ -1,0 +1,26 @@
+# Price, NAV and FX refresh, every four hours on weekdays. There is no sign-in,
+# so it is a plain POST to the app inside the cluster.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cairezeki-refresh
+  namespace: invest
+spec:
+  schedule: "0 */4 * * 1-5"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: refresh
+              image: curlimages/curl:8.10.1
+              command:
+                - sh
+                - -c
+                - >-
+                  curl -fsS -X POST
+                  http://cairezeki.invest.svc/api/v1/dashboard/refresh
